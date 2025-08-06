@@ -10,6 +10,16 @@ A Chrome extension that enhances your productivity by allowing you to extract we
 - **Clipboard Integration**: Automatically copies the extracted content and your custom prompt to the clipboard.
 - **Real-time URL Display**: Always know which page you are working with, with a real-time display of the current URL.
 
+## Screenshots
+
+### Extraction
+
+![Extraction](howto/extraction.png)
+
+### Summary
+
+![Summary](howto/summary.png)
+
 ## How It Works
 
 This extension uses Chrome's Side Panel API to provide a powerful and intuitive interface for building prompts for AI models. The sidebar allows you to save a custom prompt, which is then combined with the extracted content of the current webpage. The final prompt is then copied to your clipboard, ready to be pasted into any AI model.
