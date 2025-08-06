@@ -326,7 +326,7 @@ function filterMarkdown(markdown) {
   const patterns = [
     // Recommendation sections (e.g., "Read More", "Related Articles", "Editor's/Editors’ Picks", "Trending in X", "More in X")
     // Allow start-of-string or 1-2 newlines and markups like ### or **, followed by keywords.
-    `(?:^|\\n{1,2})(?:#{1,3}|\\*\\*)?\\s*(?:Read More|Also Read|Related(?: Articles| Content)?|Further Reading|More\\s+from\\s+[^\\n]+|Don['’]t Miss|Up Next|Recommended|Trending(?:\\s+in\\s+[^\\n]+)?|Popular|In Case You Missed It|You Might Also Like|Continue Reading|Related Stories|More Stories|Latest News|Editor['’]s Picks|What to Read Next)\\s*:?\\s*\\n[\\s\\S]*?` + sectionBoundary,
+    `(?:^|\\n{1,2})(?:#{1,3}|\\*\\*)?\\s*(?:Read More|Read Next|Also Read|Related(?: Articles| Content)?|Further Reading|More\\s+from\\s+[^\\n]+|Don['’]t Miss|Up Next|Recommended|Trending(?:\\s+in\\s+[^\\n]+)?|Popular|In Case You Missed It|You Might Also Like|Continue Reading|Related Stories|More Stories|Latest News|Editor['’]s Picks|What to Read Next)\\s*:?\\s*\\n[\\s\\S]*?` + sectionBoundary,
 
     // Social media, newsletters, and other calls-to-action
     `(?:^|\\n{1,2})(?:#{1,3}|\\*\\*)?\\s*(?:Share this article|Follow us on|Connect with us|Join our newsletter|Sign up for updates|Enter your email|Subscribe to our newsletter|Get the latest updates|Don['’]t miss out)\\s*[:]?\\s*\\n[\\s\\S]*?` + sectionBoundary,
