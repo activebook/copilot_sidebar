@@ -14,7 +14,8 @@ A Chrome extension that enhances your productivity by allowing you to extract we
 
 ### Extraction
 
-![Extraction](howto/extraction.png)
+![Whole Page Extraction](howto/extraction.png)
+![Article Only Extraction](howto/extraction2.png)
 
 ### Summary
 
