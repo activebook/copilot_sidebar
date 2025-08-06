@@ -1,147 +1,383 @@
-// Content script for extracting main content from webpages
+// Content script for extracting main content from webpages with semantic chunking and context metadata
 
 /**
- * Extracts the main content from the current webpage
- * Uses heuristics to identify the main content area
- * @returns {string} The extracted content
+ * Extract and structure page content for AI consumption.
+ * - Identifies a main content container
+ * - Performs semantic chunking (headings, paragraphs, lists, code blocks)
+ * - Preserves code fences with language tags when detectable
+ * - Builds a context metadata header (url, title, timestamp, selection ranges, breadcrumb headings)
+ * @returns {{markdown:string, chunks:Array, context:Object}} structured extraction
  */
 function extractMainContent() {
-  // Initialize variables to track the best content candidate
+  const mainEl = findMainContentElement();
+  const selectionInfo = getSelectionInfo();
+  const context = buildContext(selectionInfo);
+
+  // Choose root for parsing: prefer selection container if meaningful, else mainEl, else body
+  const root = selectionInfo.containerEl || mainEl || document.body;
+
+  // Build chunks
+  const chunks = chunkDomToSemanticBlocks(root);
+
+  // Simple include toggles default: include all chunk types
+  const include = { heading: true, paragraph: true, list: true, code: true, blockquote: true, table: true };
+
+  // Compose markdown
+  const markdown = renderMarkdown(chunks, include, context);
+
+  return {
+    markdown,
+    chunks,
+    context
+  };
+}
+
+/**
+ * Heuristic: find likely main content container
+ */
+function findMainContentElement() {
   let bestElement = null;
   let bestScore = 0;
-  
-  // Elements that are likely to contain the main content
   const contentSelectors = [
-    'article',
-    'main',
-    '.content',
-    '.post-content',
-    '.article-content',
-    '.entry-content',
-    '#content',
-    '.main-content'
+    'article','main','.content','.post-content','.article-content','.entry-content','#content','.main-content'
   ];
-  
-  // Try to find content using common selectors first
   for (const selector of contentSelectors) {
     const elements = document.querySelectorAll(selector);
     for (const element of elements) {
-      // Skip hidden elements
       if (isHidden(element)) continue;
-      
-      const textLength = element.textContent.trim().length;
-      if (textLength > bestScore) {
-        bestScore = textLength;
+      const score = getTextContentLength(element);
+      if (score > bestScore) {
+        bestScore = score;
         bestElement = element;
       }
     }
-    
-    // If we found a good candidate, stop searching
     if (bestScore > 1000) break;
   }
-  
-  // If we didn't find a good candidate using selectors, use heuristics
   if (bestScore < 500) {
-    // Get all paragraphs
+    // fallback: expand from densest paragraph
     const paragraphs = document.querySelectorAll('p');
-    
-    // Find the paragraph with the most text
     let bestParagraph = null;
     let bestParagraphScore = 0;
-    
     for (const p of paragraphs) {
-      // Skip hidden paragraphs
       if (isHidden(p)) continue;
-      
-      const textLength = p.textContent.trim().length;
-      if (textLength > bestParagraphScore) {
-        bestParagraphScore = textLength;
-        bestParagraph = p;
-      }
+      const len = p.textContent.trim().length;
+      if (len > bestParagraphScore) { bestParagraphScore = len; bestParagraph = p; }
     }
-    
-    // If we found a good paragraph, use its parent as the content element
     if (bestParagraph && bestParagraphScore > 100) {
-      // Find the best parent container by looking for the one with the most text content
       let parent = bestParagraph.parentElement;
       let bestParent = parent;
       let bestParentScore = getTextContentLength(parent);
-      
-      // Check up to 3 levels of parents
       for (let i = 0; i < 3; i++) {
         if (!parent) break;
         parent = parent.parentElement;
         if (!parent) break;
-        
         const parentScore = getTextContentLength(parent);
-        if (parentScore > bestParentScore * 1.2) { // Must be significantly better
-          bestParent = parent;
-          bestParentScore = parentScore;
-        }
+        if (parentScore > bestParentScore * 1.2) { bestParent = parent; bestParentScore = parentScore; }
       }
-      
       bestElement = bestParent;
-      bestScore = bestParentScore;
     }
   }
-  
-  // If we found a good content element, extract its text
-  if (bestElement && bestScore > 200) {
-    return cleanText(bestElement.innerText);
+  return bestElement;
+}
+
+/**
+ * Semantic chunker: traverses DOM and emits typed blocks
+ * Types: heading(level), paragraph, list(ordered|unordered), code(lang), blockquote, table
+ */
+function chunkDomToSemanticBlocks(root) {
+  const chunks = [];
+
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_ELEMENT | NodeFilter.SHOW_TEXT, {
+    acceptNode(node) {
+      // Skip hidden or script/style/nav/etc elements
+      if (node.nodeType === Node.ELEMENT_NODE) {
+        const el = /** @type {Element} */(node);
+        const tag = el.tagName.toLowerCase();
+        if (['script','style','nav','header','footer','aside'].includes(tag)) return NodeFilter.FILTER_REJECT;
+        if (isHidden(el)) return NodeFilter.FILTER_REJECT;
+      }
+      return NodeFilter.FILTER_ACCEPT;
+    }
+  });
+
+  // Helpers to push chunks
+  const push = (type, data) => chunks.push({ type, ...data });
+
+  let node;
+  while ((node = walker.nextNode())) {
+    if (node.nodeType !== Node.ELEMENT_NODE) continue;
+    const el = /** @type {HTMLElement} */(node);
+    const tag = el.tagName.toLowerCase();
+
+    // Headings
+    if (/^h[1-6]$/.test(tag)) {
+      const level = parseInt(tag[1], 10);
+      push('heading', { level, text: cleanInline(el.textContent || ''), breadcrumb: getBreadcrumb(el) });
+      continue;
+    }
+
+    // Code blocks (pre/code)
+    if (tag === 'pre') {
+      const codeEl = el.querySelector('code') || el;
+      const codeText = getCodeText(codeEl);
+      const lang = detectCodeLanguage(codeEl);
+      if (codeText.trim()) push('code', { lang, code: codeText });
+      continue;
+    }
+
+    // Blockquotes
+    if (tag === 'blockquote') {
+      const text = cleanInline(el.innerText || '');
+      if (text) push('blockquote', { text });
+      continue;
+    }
+
+    // Lists
+    if (tag === 'ul' || tag === 'ol') {
+      const ordered = tag === 'ol';
+      const items = Array.from(el.querySelectorAll(':scope > li')).map(li => cleanInline(li.innerText || '').trim()).filter(Boolean);
+      if (items.length) push('list', { ordered, items });
+      continue;
+    }
+
+    // Tables (simple)
+    if (tag === 'table') {
+      const rows = Array.from(el.querySelectorAll('tr')).map(tr => Array.from(tr.children).map(td => cleanInline(td.innerText || '').trim()));
+      if (rows.length) push('table', { rows });
+      continue;
+    }
+
+    // Paragraph-like blocks
+    if (tag === 'p' || tag === 'div' || tag === 'section' || tag === 'article') {
+      // Avoid capturing containers that have nested block elements; only capture leaf-ish text
+      if (hasBlockChildren(el)) continue;
+      const text = cleanInline(el.innerText || '').trim();
+      if (text) push('paragraph', { text });
+      continue;
+    }
   }
-  
-  // Fallback: extract text from the entire body, but limit to first 5000 characters
-  const bodyText = document.body.innerText;
-  return cleanText(bodyText.substring(0, 5000));
+
+  // Merge adjacent paragraphs into single paragraph separated by blank line if desired
+  // (Keep simple for now)
+  return chunks;
+}
+
+function hasBlockChildren(el) {
+  const blockTags = new Set(['P','DIV','SECTION','ARTICLE','UL','OL','TABLE','PRE','BLOCKQUOTE','H1','H2','H3','H4','H5','H6']);
+  for (const child of el.children) {
+    if (blockTags.has(child.tagName)) return true;
+  }
+  return false;
+}
+
+function getCodeText(codeEl) {
+  // Keep original line breaks; avoid collapsing whitespace
+  return (codeEl.textContent || '').replace(/\s+$/g, '');
+}
+
+function detectCodeLanguage(codeEl) {
+  if (!(codeEl instanceof Element)) return '';
+  const classAttr = codeEl.getAttribute('class') || '';
+  // common patterns: language-js, lang-js, language-typescript, hljs language-python
+  const match = classAttr.match(/(?:language|lang)-([a-z0-9+#]+)/i) || classAttr.match(/\b([a-z0-9+#]+)\b/i);
+  return match ? match[1].toLowerCase() : '';
+}
+
+function cleanInline(text) {
+  if (!text) return '';
+  // Collapse spaces but preserve new lines lightly
+  let t = text.replace(/\r/g, '').replace(/\t/g, ' ');
+  // Replace 3+ newlines with 2
+  t = t.replace(/\n{3,}/g, '\n\n');
+  // Trim trailing spaces on lines
+  t = t.split('\n').map(l => l.replace(/\s+$/,'')).join('\n');
+  // Collapse excessive spaces
+  t = t.replace(/[ \u00A0]{2,}/g, ' ');
+  return t.trim();
+}
+
+/**
+ * Build breadcrumb (nearest heading ancestors)
+ */
+function getBreadcrumb(el) {
+  const crumbs = [];
+  let cur = el;
+  while (cur && cur !== document.body) {
+    cur = cur.parentElement;
+    if (!cur) break;
+    const tag = cur.tagName.toLowerCase();
+    if (/^h[1-6]$/.test(tag)) {
+      const level = parseInt(tag[1], 10);
+      const text = cleanInline(cur.textContent || '');
+      if (text) crumbs.unshift(`H${level}:${text}`);
+    }
+  }
+  return crumbs;
+}
+
+/**
+ * Selection info: range text and container element
+ */
+function getSelectionInfo() {
+  const sel = window.getSelection && window.getSelection();
+  if (sel && sel.rangeCount > 0 && sel.toString().trim().length > 0) {
+    const range = sel.getRangeAt(0);
+    const containerEl = range.commonAncestorContainer.nodeType === Node.ELEMENT_NODE
+      ? range.commonAncestorContainer
+      : range.commonAncestorContainer.parentElement;
+    return {
+      hasSelection: true,
+      text: sel.toString(),
+      startOffset: range.startOffset || 0,
+      endOffset: range.endOffset || 0,
+      containerEl
+    };
+  }
+  return { hasSelection: false, text: '', startOffset: 0, endOffset: 0, containerEl: null };
+}
+
+/**
+ * Context metadata for grounding the AI
+ */
+function buildContext(selectionInfo) {
+  const url = location.href;
+  const title = document.title || '';
+  const timestamp = new Date().toISOString();
+
+  // Top-level headings to serve as breadcrumbs of the page
+  const topHeadings = Array.from(document.querySelectorAll('h1, h2')).map(h => {
+    const level = parseInt(h.tagName[1], 10);
+    const text = cleanInline(h.textContent || '');
+    return { level, text };
+  });
+
+  return {
+    url, title, timestamp,
+    selection: selectionInfo,
+    breadcrumbs: topHeadings
+  };
+}
+
+/**
+ * Render to Markdown with a context header
+ */
+function renderMarkdown(chunks, include, context) {
+  const header = [
+    '---',
+    `url: ${context.url}`,
+    `title: ${context.title}`,
+    `timestamp: ${context.timestamp}`,
+    context.selection?.hasSelection ? `selection_excerpt: ${truncateInline(context.selection.text, 300)}` : null,
+    context.breadcrumbs?.length ? `breadcrumbs: ${context.breadcrumbs.map(b => (b.level === 1 ? '# ' : '## ') + b.text).join(' | ')}` : null,
+    '---',
+    ''
+  ].filter(Boolean).join('\n');
+
+  const lines = [];
+  for (const c of chunks) {
+    if (c.type === 'heading' && include.heading) {
+      lines.push(`${'#'.repeat(Math.min(6, c.level))} ${c.text}`);
+    } else if (c.type === 'paragraph' && include.paragraph) {
+      lines.push(c.text);
+    } else if (c.type === 'list' && include.list) {
+      if (c.ordered) {
+        c.items.forEach((item, i) => lines.push(`${i + 1}. ${item}`));
+      } else {
+        c.items.forEach(item => lines.push(`- ${item}`));
+      }
+    } else if (c.type === 'code' && include.code) {
+      const lang = c.lang || '';
+      lines.push('```' + lang);
+      lines.push(c.code);
+      lines.push('```');
+    } else if (c.type === 'blockquote' && include.blockquote) {
+      c.text.split('\n').forEach(line => lines.push(`> ${line}`));
+    } else if (c.type === 'table' && include.table) {
+      // Render simple table: header separator after first row
+      for (let r = 0; r < c.rows.length; r++) {
+        lines.push(`| ${c.rows[r].join(' | ')} |`);
+        if (r === 0 && c.rows.length > 1) {
+          lines.push(`| ${c.rows[r].map(() => '---').join(' | ')} |`);
+        }
+      }
+    }
+    lines.push(''); // blank line between blocks
+  }
+  const body = lines.join('\n').trim() + '\n';
+  return `${header}${body}`;
+}
+
+function truncateInline(text, max) {
+  const t = (text || '').replace(/\s+/g, ' ').trim();
+  return t.length > max ? t.slice(0, max - 1) + '…' : t;
 }
 
 /**
  * Checks if an element is hidden via CSS
- * @param {Element} element - The element to check
- * @returns {boolean} True if the element is hidden
  */
 function isHidden(element) {
   const style = window.getComputedStyle(element);
-  return style.display === 'none' || 
-         style.visibility === 'hidden' || 
-         style.opacity === '0' || 
-         element.offsetParent === null;
+  if (style.display === 'none' || style.visibility === 'hidden' || style.opacity === '0') return true;
+  // off-screen or collapsed
+  const rect = element.getBoundingClientRect();
+  if (rect.width === 0 || rect.height === 0) return true;
+  return false;
+}
+
+/**
+ * Detect sticky/fixed small utility bars
+ */
+function isStickyOrFixedSmall(el) {
+  const style = window.getComputedStyle(el);
+  const pos = style.position;
+  if (pos === 'fixed' || pos === 'sticky') {
+    const r = el.getBoundingClientRect();
+    if (r.height < 120) return true;
+    if (r.top <= 0 || Math.abs(window.innerHeight - (r.top + r.height)) < 4) return true;
+  }
+  return false;
+}
+
+/**
+ * Extract visible text from an element clone (basic)
+ */
+function getVisibleText(el) {
+  const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT, {
+    acceptNode(node) {
+      const parent = node.parentElement;
+      if (!parent) return NodeFilter.FILTER_REJECT;
+      if (isHidden(parent)) return NodeFilter.FILTER_REJECT;
+      return NodeFilter.FILTER_ACCEPT;
+    }
+  });
+  let s = '';
+  let n;
+  while ((n = walker.nextNode())) {
+    s += n.nodeValue;
+  }
+  return cleanInline(s);
+}
+
+/**
+ * Get concatenated first N paragraphs text length from a container
+ */
+function getFirstParagraphsText(el, n = 2) {
+  const ps = Array.from(el.querySelectorAll('p')).slice(0, n);
+  return ps.map(p => cleanInline(p.innerText || '')).join(' ');
 }
 
 /**
  * Gets the length of text content in an element, excluding scripts and styles
- * @param {Element} element - The element to check
- * @returns {number} The length of text content
  */
 function getTextContentLength(element) {
-  // Clone the element to avoid modifying the original
+  if (!element) return 0;
   const clone = element.cloneNode(true);
-  
-  // Remove scripts, styles, and other non-content elements
   const nonContentElements = clone.querySelectorAll('script, style, nav, header, footer, aside');
   for (const el of nonContentElements) {
-    if (el.parentNode) {
-      el.parentNode.removeChild(el);
-    }
+    if (el.parentNode) el.parentNode.removeChild(el);
   }
-  
   return clone.textContent.trim().length;
 }
 
-/**
- * Cleans up extracted text by removing extra whitespace and limiting length
- * @param {string} text - The text to clean
- * @returns {string} The cleaned text
- */
-function cleanText(text) {
-  // Replace multiple whitespace characters with a single space
-  let cleaned = text.replace(/\s+/g, ' ');
-  
-  // Remove leading/trailing whitespace
-  cleaned = cleaned.trim();
-  
-  return cleaned;
-}
-
-// Return the extracted content
+// Return the structured extraction
 extractMainContent();
