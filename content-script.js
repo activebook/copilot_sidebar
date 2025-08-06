@@ -318,8 +318,10 @@ function filterMarkdown(markdown) {
   let content = markdown;
 
   // This is the boundary that separates content blocks we want to remove.
-  // It looks for the start of a new major section (H1-H4 heading) or a horizontal rule.
-  const sectionBoundary = '(?=(?:\\n\\n|\\n|^)#{1,4} |\\n\\n---\\n|\\n\\n\\*\\*\\*\\n|$)';
+  // It looks for the start of a new major section (H1-H2 heading) or a horizontal rule.
+  // IMPORTANT: We intentionally stop scanning at the next sibling H1/H2 (not H3/H4),
+  // so that when removing a "##" section we also remove all its nested "###/####" subsections.
+  const sectionBoundary = '(?=(?:\\n\\n|\\n|^)#{1,2} |\\n\\n---\\n|\\n\\n\\*\\*\\*\\n|$)';
 
   const patterns = [
     // Recommendation sections (e.g., "Read More", "Related Articles", "Editor's/Editors’ Picks", "Trending in X", "More in X")
@@ -349,6 +351,35 @@ function filterMarkdown(markdown) {
   patterns.forEach(pattern => {
     content = content.replace(new RegExp(pattern, 'gi'), '\n\n');
   });
+
+  // If we removed a parent "##" recommendation-like heading, also remove any nested "###/####" headings beneath it.
+  // We match a "##" removable heading and consume everything up to the next H1/H2 or end-of-file.
+  // This guarantees that all nested ###/#### inside the ## block are removed together.
+  content = content.replace(
+    /(?:^|\n)##\s*(?:Related(?:\s+Content)?|Editor['’]s\s+Picks|Trending(?:\s+in\s+[^\n]+)?|More\s+in\s+[^\n]+|More\s+from\s+[^\n]+|Recommended|Popular)[^\n]*\n[\s\S]*?(?=(?:\n#{1,2}\s|$))/gi,
+    '\n'
+  );
+
+  // Second pass: remove standalone keyword headings (## or ### etc.) that have no body under them
+  // when immediately followed by another heading or end-of-file.
+  const standaloneHeading = new RegExp(
+    '(?:^|\\n)(?:#{1,4})\\s*(?:' +
+      'Related(?:\\s+Content)?' +
+      '|Editor[\'’]s\\s+Picks' +
+      '|Trending(?:\\s+in\\s+[^\\n]+)?' +
+      '|More\\s+in\\s+[^\\n]+' +
+      '|More\\s+from\\s+[^\\n]+' +
+      '|Recommended' +
+      '|Popular' +
+    ')\\s*(?=\\n(?:#{1,6}\\s|$))',
+    'gi'
+  );
+
+  let prev;
+  do {
+    prev = content;
+    content = content.replace(standaloneHeading, '\n');
+  } while (content !== prev);
 
   // Final cleanup to normalize whitespace
   content = content.replace(/\n{3,}/g, '\n\n'); // Collapse excess newlines
