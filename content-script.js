@@ -1,14 +1,74 @@
-// Content script for extracting main content from webpages with semantic chunking and context metadata
+// Enhanced Content script for extracting main content from webpages with robust filtering
+// Includes the enhanced content extractor for better news media support
+
+// Load the enhanced content extractor
+if (typeof EnhancedContentExtractor === 'undefined') {
+  // Fallback: load the enhanced extractor inline if not already loaded
+  // In production, this would be loaded as a separate script
+  console.log('Enhanced extractor not loaded, using fallback extraction');
+}
 
 /**
  * Extract and structure page content for AI consumption.
- * - Identifies a main content container
- * - Performs semantic chunking (headings, paragraphs, lists, code blocks)
- * - Preserves code fences with language tags when detectable
- * - Builds a context metadata header (url, title, timestamp, selection ranges, breadcrumb headings)
+ * Uses enhanced extraction with fallback to original method.
  * @returns {{markdown:string, chunks:Array, context:Object}} structured extraction
  */
 function extractMainContent() {
+  try {
+    // Try enhanced extraction first
+    if (typeof EnhancedContentExtractor !== 'undefined') {
+      return extractWithEnhancedMethod();
+    } else {
+      console.log('Using original extraction method');
+      return extractWithOriginalMethod();
+    }
+  } catch (error) {
+    console.warn('Enhanced extraction failed, falling back to original:', error);
+    return extractWithOriginalMethod();
+  }
+}
+
+/**
+ * Enhanced extraction method using the new robust algorithm
+ */
+function extractWithEnhancedMethod() {
+  const extractor = new EnhancedContentExtractor({
+    mode: 'balanced', // Good balance of completeness and cleanliness
+    enableSemanticAnalysis: true,
+    enableNoiseFiltering: true,
+    enableBoundaryDetection: true
+  });
+  
+  const result = extractor.extractMainContent();
+  
+  if (!result.success || !result.content) {
+    throw new Error('Enhanced extraction failed');
+  }
+  
+  const selectionInfo = getSelectionInfo();
+  const context = buildContext(selectionInfo, result.metadata);
+  
+  // Use the enhanced result but maintain compatibility with existing chunking
+  const chunks = chunkDomToSemanticBlocks(result.content);
+  const include = { heading: true, paragraph: true, list: true, code: true, blockquote: true, table: true };
+  const markdown = renderMarkdown(chunks, include, context);
+  
+  return {
+    markdown,
+    chunks,
+    context: {
+      ...context,
+      extractionMethod: result.extractionMethod,
+      extractionConfidence: result.confidence,
+      enhancedMetadata: result.metadata
+    }
+  };
+}
+
+/**
+ * Original extraction method as fallback
+ */
+function extractWithOriginalMethod() {
   const mainEl = findMainContentElement();
   const selectionInfo = getSelectionInfo();
   const context = buildContext(selectionInfo);
@@ -28,7 +88,11 @@ function extractMainContent() {
   return {
     markdown,
     chunks,
-    context
+    context: {
+      ...context,
+      extractionMethod: 'original',
+      extractionConfidence: 0.6
+    }
   };
 }
 
@@ -239,7 +303,7 @@ function getSelectionInfo() {
 /**
  * Context metadata for grounding the AI
  */
-function buildContext(selectionInfo) {
+function buildContext(selectionInfo, enhancedMetadata = null) {
   const url = location.href;
   const title = document.title || '';
   const timestamp = new Date().toISOString();
@@ -251,11 +315,24 @@ function buildContext(selectionInfo) {
     return { level, text };
   });
 
-  return {
+  const context = {
     url, title, timestamp,
     selection: selectionInfo,
     breadcrumbs: topHeadings
   };
+
+  // Add enhanced metadata if available
+  if (enhancedMetadata) {
+    context.enhanced = {
+      headline: enhancedMetadata.headline,
+      author: enhancedMetadata.author,
+      publishDate: enhancedMetadata.publishDate,
+      contentLength: enhancedMetadata.contentLength,
+      extractionScore: enhancedMetadata.extractionScore
+    };
+  }
+
+  return context;
 }
 
 /**
