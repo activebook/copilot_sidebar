@@ -54,8 +54,21 @@ async function extractPageContent() {
       files: ['content-script.js']
     });
     
-    if (results && results.length > 0 && results[0].result) {
-      return results[0].result;
+    if (results && results.length > 0) {
+      const value = results[0].result;
+      // Normalize return: prefer structured {markdown, chunks, context}; fallback to string
+      if (value && typeof value === 'object' && 'markdown' in value) {
+        return value;
+      }
+      if (typeof value === 'string') {
+        return { markdown: value, chunks: [], context: {
+          url: activeTab.url || '',
+          title: activeTab.title || '',
+          timestamp: new Date().toISOString(),
+          selection: { hasSelection: false, text: '', startOffset: 0, endOffset: 0 },
+          breadcrumbs: []
+        }};
+      }
     }
     
     return null;
@@ -103,19 +116,38 @@ function loadPrompt() {
 // Extract content, combine with prompt, and display
 extractBtn.addEventListener('click', async () => {
   clearOldState();
-  const extractedContent = await extractPageContent();
-  if (extractedContent) {
-    const customPrompt = promptInputElement.value;
-    const finalPrompt = `${customPrompt}\n\n${extractedContent}`;
-    
+  const result = await extractPageContent();
+  if (result) {
+    const { markdown, context } = result;
+    const customPrompt = promptInputElement.value || '';
+    // Compose clipboard payload: prompt + markdown (which already contains context header)
+    const finalPrompt = customPrompt ? `${customPrompt}\n\n${markdown}` : markdown;
+
+    // Display in the UI immediately
+    outputArea.value = markdown;
+
+    // Update status with brief context
+    try {
+      const title = context?.title || '';
+      const url = context?.url || '';
+      const ts = context?.timestamp ? new Date(context.timestamp).toLocaleString() : new Date().toLocaleString();
+      statusElement.textContent = `Extracted • ${ts}${title ? ` • ${title}` : ''}`;
+      currentUrlElement.textContent = url || currentUrlElement.textContent;
+    } catch (_) {
+      // non-fatal
+    }
+
+    // Copy to clipboard (best-effort)
     navigator.clipboard.writeText(finalPrompt)
       .then(() => {
-        outputArea.value = extractedContent;
         showNotification('Full prompt copied to clipboard!');
       })
       .catch(err => {
-        showNotification(`Failed to copy prompt: ${err.message}`, true);
+        // Still proceed even if clipboard fails
+        showNotification(`Copied to clipboard may have failed: ${err.message}`, true);
       });
+  } else {
+    showNotification('No content extracted from the active tab.', true);
   }
 });
 
