@@ -101,10 +101,34 @@ chrome.commands.onCommand.addListener(async (command) => {
       });
     } catch (_) {}
 
-    // Execute the existing content-script extractor in the page context
+    // Get custom filter patterns
+    const { filterPatterns } = await chrome.storage.sync.get('filterPatterns');
+    // Ensure we pass a string to the extractor; if unset or empty, send an empty string to use defaults in page logic
+    const patterns = (typeof filterPatterns === 'string' && filterPatterns.trim().length > 0) ? filterPatterns : '';
+    
+    // Execute the existing content-script extractor in the page context with custom filters
     const results = await chrome.scripting.executeScript({
       target: { tabId: activeTab.id },
-      files: ['content-script.js']
+      args: [patterns],
+      func: (customFilters) => {
+        // Store custom filters globally for the content script
+        window.__customFilters = customFilters;
+        
+        // Execute the content script
+        const script = document.createElement('script');
+        script.src = chrome.runtime.getURL('content-script.js');
+        script.onload = function() {
+          this.remove();
+        };
+        document.head.appendChild(script);
+        
+        // Wait a bit for the script to execute and return result
+        return new Promise((resolve) => {
+          setTimeout(() => {
+            resolve(window.__lastExtractionResult || null);
+          }, 100);
+        });
+      }
     });
 
     let extractedText = '';
