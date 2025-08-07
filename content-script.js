@@ -474,7 +474,11 @@ function getTextContentLength(element) {
   return clone.textContent.trim().length;
 }
 
-// Store the result globally and return it
+// Store the result globally and dispatch an event to notify the background script
 const result = extractMainContent();
 window.__lastExtractionResult = result;
+
+// Dispatch a custom event with the result
+window.dispatchEvent(new CustomEvent('copilotSidebarExtractionDone', { detail: result }));
+
 return result;

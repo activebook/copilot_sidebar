@@ -111,22 +111,30 @@ chrome.commands.onCommand.addListener(async (command) => {
       target: { tabId: activeTab.id },
       args: [patterns],
       func: (customFilters) => {
-        // Store custom filters globally for the content script
-        window.__customFilters = customFilters;
-        
-        // Execute the content script
-        const script = document.createElement('script');
-        script.src = chrome.runtime.getURL('content-script.js');
-        script.onload = function() {
-          this.remove();
-        };
-        document.head.appendChild(script);
-        
-        // Wait a bit for the script to execute and return result
+        // Use a Promise to wait for the content script to finish
         return new Promise((resolve) => {
-          setTimeout(() => {
-            resolve(window.__lastExtractionResult || null);
-          }, 100);
+          // Define a listener for when the content script is done
+          const listener = (event) => {
+            resolve(event.detail); // Resolve with the data from the event
+            window.removeEventListener('copilotSidebarExtractionDone', listener);
+          };
+          window.addEventListener('copilotSidebarExtractionDone', listener, { once: true });
+
+          // Store custom filters globally for the content script
+          window.__customFilters = customFilters;
+
+          // Execute the content script by injecting it
+          const script = document.createElement('script');
+          script.src = chrome.runtime.getURL('content-script.js');
+          script.onload = function () {
+            this.remove();
+          };
+          script.onerror = () => {
+            // If the script fails to load, resolve with null to prevent hanging
+            window.removeEventListener('copilotSidebarExtractionDone', listener);
+            resolve(null);
+          };
+          (document.head || document.documentElement).appendChild(script);
         });
       }
     });
