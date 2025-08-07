@@ -135,6 +135,27 @@ async function handleExtractionResult(result) {
   }
 }
 
+// Handle a single paragraph selection message from page
+function handleParagraphSelectedMessage(msg) {
+  try {
+    const { text, sourceUrl, paragraphIndex } = msg.payload || {};
+    if (!text) {
+      showNotification('Paragraph selection contained no text.', true);
+      return;
+    }
+    const customPrompt = promptInputElement.value || '';
+    const header = `---\nurl: ${sourceUrl || currentUrl}\nselected_paragraph_index: ${typeof paragraphIndex === 'number' ? paragraphIndex : 'n/a'}\n---\n\n`;
+    const combined = customPrompt ? `${customPrompt}\n\n${header}${text}` : `${header}${text}`;
+    outputArea.value = text;
+    statusElement.textContent = `Paragraph captured • ${new Date().toLocaleTimeString()}`;
+    navigator.clipboard.writeText(combined)
+      .then(() => showNotification('Paragraph sent. Copied combined prompt + text to clipboard.'))
+      .catch(err => showNotification(`Paragraph copied may have failed: ${err.message}`, true));
+  } catch (e) {
+    showNotification(`Failed to handle paragraph: ${e && e.message ? e.message : e}`, true);
+  }
+}
+
 extractBtn.addEventListener('click', async () => {
   clearOldState();
   const result = await extractPageContent();
@@ -183,5 +204,17 @@ chrome.runtime.onMessage.addListener(async (msg) => {
       await handleExtractionResult(result);
     }
   }
+
+  // Handle paragraphSelected messages from the injected page script
+  if (msg && msg.type === 'paragraphSelected') {
+    handleParagraphSelectedMessage(msg);
+  }
 });
+
+// On load, request the background to inject the paragraph icon script in the active tab
+(async function tryInjectParagraphIcons() {
+  try {
+    chrome.runtime.sendMessage({ type: 'REQUEST_INJECT_PARAGRAPH_ICONS' });
+  } catch (_) {}
+})();
 

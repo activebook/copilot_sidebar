@@ -70,12 +70,15 @@ chrome.runtime.onInstalled.addListener(() => {
   } catch (e) {
     console.warn('Badge init error:', e);
   }
+  // Try to inject paragraph-icons into the currently active tab after install/update
+  injectParagraphIconsIntoActiveTab().catch(() => {});
 });
 
 // When the extension's action button is clicked, open the sidebar
 chrome.action.onClicked.addListener(async (tab) => {
   // Open the side panel (action clicks count as user gestures)
   await chrome.sidePanel.open({ tabId: tab.id });
+
   // Also trigger extraction after opening
   chrome.runtime.sendMessage({ type: 'TRIGGER_EXTRACTION' });
   // Provide a subtle badge cue that the panel was opened
@@ -89,6 +92,14 @@ chrome.commands.onCommand.addListener(async (command) => {
   try {
     const [activeTab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
     if (!activeTab || !activeTab.id) return;
+
+    // Ensure paragraph icons script is active on the current tab as part of auto behavior
+    try {
+      await chrome.scripting.executeScript({
+        target: { tabId: activeTab.id },
+        files: ['paragraph-icons.js']
+      });
+    } catch (_) {}
 
     // Execute the existing content-script extractor in the page context
     const results = await chrome.scripting.executeScript({
@@ -175,8 +186,66 @@ chrome.commands.onCommand.addListener(async (command) => {
   }
 });
 
-// Remove unused REQUEST_OPEN_SIDEPANEL handler since we no longer auto-open the sidebar on Alt+E
+// Listen for requests from the sidebar to (re)inject the paragraph icon script on demand
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
-  // Keep listener stub in case other messages are added later; no-op for REQUEST_OPEN_SIDEPANEL
+  if (!msg || !msg.type) return false;
+
+  if (msg.type === 'REQUEST_INJECT_PARAGRAPH_ICONS') {
+    (async () => {
+      try {
+        const [activeTab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
+        if (activeTab && activeTab.id) {
+          await chrome.scripting.executeScript({
+            target: { tabId: activeTab.id },
+            files: ['paragraph-icons.js']
+          });
+          sendResponse && sendResponse({ ok: true });
+        } else {
+          sendResponse && sendResponse({ ok: false, error: 'No active tab' });
+        }
+      } catch (e) {
+        console.warn('Injection request failed:', e);
+        sendResponse && sendResponse({ ok: false, error: String(e && e.message || e) });
+      }
+    })();
+    // Indicate async response
+    return true;
+  }
+
+  // Keep listener stub in case other messages are added later; no-op for other types
   return false;
 });
+
+// Auto-inject paragraph icons when switching active tab or when a tab is updated (navigated)
+chrome.tabs.onActivated.addListener(async () => {
+  try {
+    await injectParagraphIconsIntoActiveTab();
+  } catch (e) {
+    // ignore
+  }
+});
+
+chrome.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
+  try {
+    // Inject when page finishes loading main content or on URL change
+    if (changeInfo.status === 'complete' || changeInfo.url) {
+      await chrome.scripting.executeScript({
+        target: { tabId },
+        files: ['paragraph-icons.js']
+      });
+    }
+  } catch (e) {
+    // ignore per-tab failures
+  }
+});
+
+// Helper: inject into the current active tab in the current window
+async function injectParagraphIconsIntoActiveTab() {
+  const [activeTab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
+  if (activeTab && activeTab.id) {
+    await chrome.scripting.executeScript({
+      target: { tabId: activeTab.id },
+      files: ['paragraph-icons.js']
+    });
+  }
+}
