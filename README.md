@@ -1,79 +1,75 @@
 # Copilot Sidebar
 
-A Chrome extension that enhances your productivity by allowing you to extract web content and build custom prompts for AI models, all from a convenient sidebar.
-
-## Features
-
-- **Dark Mode Interface**: A sleek, modern dark mode UI that is easy on the eyes.
-- **Custom Prompts**: Create and save your own custom prompts for any AI model.
-- **Content Extraction**: Extract the main content from any webpage with a single click.
-- **Clipboard Integration**: Automatically copies the extracted content and your custom prompt to the clipboard.
-- **Real-time URL Display**: Always know which page you are working with, with a real-time display of the current URL.
+A Chrome side panel extension to extract webpage content, combine it with your saved prompt, and copy the result to the clipboard.
 
 ## Screenshots
 
-### Extraction
+- Whole Page Extraction
+  ![Whole Page Extraction](howto/extraction.png)
 
-![Whole Page Extraction](howto/extraction.png)
-![Article Only Extraction](howto/extraction2.png)
+- Article Only Extraction
+  ![Article Only Extraction](howto/extraction2.png)
 
-### Summary
+- Summary
+  ![Summary](howto/summary.png)
 
-![Summary](howto/summary.png)
+## Functional Overview
 
-## How It Works
+- Content extraction
+  - Extracts main article content into clean Markdown with semantic chunking: headings, paragraphs, lists, code blocks, tables, and blockquotes.
+  - Builds a YAML-like context header with url, title, timestamp, optional selection excerpt, and page breadcrumbs.
+  - Respects user selection: if text is selected, extraction is scoped around the selected container.
+- Prompt composition
+  - Persist a custom prompt in chrome.storage and prepend it to extracted content before copying.
+- Clipboard integration
+  - Copies the combined prompt + extracted Markdown to clipboard automatically from the sidebar and via keyboard shortcut.
+- Side panel UI
+  - Dark-mode sidebar shows current URL/title, status, prompt editor, Extract button, and output preview.
+- Keyboard shortcut
+  - Alt+E triggers “extract and copy” from any page without opening the sidebar.
+- Paragraph capture helpers
+  - paragraph-icons.js can inject clickable icons next to paragraphs to send a single paragraph to the sidebar and clipboard.
 
-This extension uses Chrome's Side Panel API to provide a powerful and intuitive interface for building prompts for AI models. The sidebar allows you to save a custom prompt, which is then combined with the extracted content of the current webpage. The final prompt is then copied to your clipboard, ready to be pasted into any AI model.
+## Quick Start (Load Unpacked)
 
-### Chrome APIs Used
-
-The extension uses several Chrome APIs to provide its functionality:
-
-1.  `chrome.tabs.query({ active: true, lastFocusedWindow: true })` - Gets the initial active tab when the sidebar opens.
-2.  `chrome.tabs.onActivated.addListener()` - Listens for tab switching events.
-3.  `chrome.tabs.onUpdated.addListener()` - Listens for URL changes within the active tab.
-4.  `chrome.sidePanel.setOptions()` - Configures the sidebar to be available on all websites.
-5.  `chrome.action.onClicked.addListener()` - Opens the sidebar when the extension icon is clicked.
-6.  `chrome.storage` - Saves and retrieves the user's custom prompt.
-7.  `chrome.scripting.executeScript()` - Executes the content script to extract the main content of the page.
-
-## Installation
-
-### Development Installation
-
-1.  Clone this repository or download the source code.
-2.  Open Chrome and navigate to `chrome://extensions/`.
-3.  Enable "Developer mode" using the toggle in the top-right corner.
-4.  Click "Load unpacked" and select the folder containing the extension files.
-5.  The extension should now appear in your Chrome toolbar.
+1. Open Chrome → chrome://extensions/
+2. Toggle “Developer mode”
+3. Click “Load unpacked” and select this folder
 
 ## Usage
 
-1.  Click the extension icon in the Chrome toolbar to open the sidebar.
-2.  Enter your custom prompt in the "Prompt" text area and click "Save Prompt."
-3.  Navigate to the webpage you want to extract content from.
-4.  Click the "Extract" button.
-5.  The extracted content will be displayed in the text area and the full prompt will be copied to your clipboard.
+- Click the extension icon to open the side panel.
+- Enter and Save Prompt.
+- Click Extract to generate Markdown and copy prompt+content to clipboard.
+- Or press Alt+E to extract-and-copy in place.
 
-## Files
+## Architecture
 
--   `manifest.json` - Extension configuration (Manifest V3).
--   `background.js` - Background script that sets up the sidebar.
--   `sidebar.html` - HTML structure for the sidebar.
--   `sidebar.js` - JavaScript that handles all the sidebar's functionality.
--   `content-script.js` - Content script that extracts the main content from webpages.
--   `images/` - Directory containing extension icons.
+- Core files
+  - manifest.json — MV3 manifest with side_panel, background service worker, commands, and permissions.
+  - background.js — Handles side panel open, Alt+E command, extraction-trigger, clipboard write via in-page script, badge/notification cues, and auto-inject of paragraph-icons.
+  - sidebar.html — Side panel UI.
+  - sidebar.js — Panel logic: URL status, prompt persistence, invoke extraction via chrome.scripting, compose final prompt, clipboard write.
+  - content-script.js — DOM-to-Markdown extractor with semantic chunking, context header, and content filtering.
+  - paragraph-icons.js — Optional injected helper to capture single-paragraph text.
+- Key Chrome APIs
+  - chrome.sidePanel.setOptions()
+  - chrome.action.onClicked.addListener()
+  - chrome.tabs.query(), chrome.tabs.onActivated, chrome.tabs.onUpdated
+  - chrome.storage.sync / chrome.storage.local
+  - chrome.scripting.executeScript()
+  - chrome.commands.onCommand
+  - chrome.notifications.create()
 
 ## Permissions
 
-This extension requires the following permissions:
+- permissions: ["sidePanel","tabs","clipboardWrite","scripting","storage","notifications"]
+- host_permissions: ["<all_urls>"]
 
--   `sidePanel` - To create and manage the sidebar.
--   `tabs` - To access tab information and detect URL changes.
--   `clipboardWrite` - To copy the generated prompt to the clipboard.
--   `scripting` - To execute content scripts for extracting webpage content.
--   `storage` - To save the user's custom prompt.
--   `host_permissions: ["<all_urls>"]` - To access content on all websites for extraction.
+## Notes
+
+- The background service worker cannot access navigator.clipboard; clipboard writes are performed in-page via scripting injection.
+- Extraction output is Markdown with a context header and basic filtering for non-article sections.
 
 ## License
 
