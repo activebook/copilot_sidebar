@@ -114,41 +114,31 @@ function loadPrompt() {
 }
 
 // Extract content, combine with prompt, and display
-extractBtn.addEventListener('click', async () => {
-  clearOldState();
-  const result = await extractPageContent();
+async function handleExtractionResult(result) {
   if (result) {
     const { markdown, context } = result;
     const customPrompt = promptInputElement.value || '';
-    // Compose clipboard payload: prompt + markdown (which already contains context header)
     const finalPrompt = customPrompt ? `${customPrompt}\n\n${markdown}` : markdown;
-
-    // Display in the UI immediately
     outputArea.value = markdown;
-
-    // Update status with brief context
     try {
       const title = context?.title || '';
       const url = context?.url || '';
       const ts = context?.timestamp ? new Date(context.timestamp).toLocaleString() : new Date().toLocaleString();
       statusElement.textContent = `Extracted • ${ts}${title ? ` • ${title}` : ''}`;
       currentUrlElement.textContent = url || currentUrlElement.textContent;
-    } catch (_) {
-      // non-fatal
-    }
-
-    // Copy to clipboard (best-effort)
+    } catch (_) {}
     navigator.clipboard.writeText(finalPrompt)
-      .then(() => {
-        showNotification('Full prompt copied to clipboard!');
-      })
-      .catch(err => {
-        // Still proceed even if clipboard fails
-        showNotification(`Copied to clipboard may have failed: ${err.message}`, true);
-      });
+      .then(() => showNotification('Full prompt copied to clipboard!'))
+      .catch(err => showNotification(`Copied to clipboard may have failed: ${err.message}`, true));
   } else {
     showNotification('No content extracted from the active tab.', true);
   }
+}
+
+extractBtn.addEventListener('click', async () => {
+  clearOldState();
+  const result = await extractPageContent();
+  await handleExtractionResult(result);
 });
 
 // Initial setup
@@ -171,4 +161,27 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
 
 // Refresh the information every few seconds
 setInterval(getCurrentTabInfo, 5000);
+
+// Listen for background command completion to auto-populate after Alt+E
+chrome.runtime.onMessage.addListener(async (msg) => {
+  if (msg && msg.type === 'OPEN_SIDEBAR_AND_EXTRACT_COMPLETE') {
+    // Try to read the last extraction payload stored by background
+    try {
+      const data = await chrome.storage.local.get('__lastExtraction__');
+      const payload = data.__lastExtraction__;
+      if (payload) {
+        await handleExtractionResult(payload);
+        // Optionally clear it
+        // await chrome.storage.local.remove('__lastExtraction__');
+      } else {
+        // Fallback: run extraction from the sidebar itself
+        const result = await extractPageContent();
+        await handleExtractionResult(result);
+      }
+    } catch (e) {
+      const result = await extractPageContent();
+      await handleExtractionResult(result);
+    }
+  }
+});
 
