@@ -155,14 +155,27 @@
       <button id="extract-button" class="button">Extract</button>
     </div>
     <textarea id="output-area" rows="10" readonly placeholder="Extracted content will appear here..."></textarea>
+
+    <h2>Content Filters</h2>
+    <div class="info-box">
+      <p><strong>Keywords to remove from extracted content:</strong></p>
+      <p>Enter keywords or phrases (one per line). Sections containing these keywords will be removed from the extracted content.</p>
+      <textarea id="filter-list" rows="8" placeholder="Enter keywords to filter out (one per line)..."></textarea>
+      <div class="button-container">
+        <button id="save-filters" class="button">Save Filters</button>
+        <button id="reset-filters" class="button">Reset to Default</button>
+      </div>
+    </div>
     
     <div class="info-box">
       <p><strong>How it works:</strong></p>
       <ol>
         <li>Enter a custom prompt and click "Save Prompt" to store it.</li>
+        <li>Configure content filters to remove unwanted sections (comments, ads, etc.).</li>
         <li>Click "Extract" to get the page content.</li>
         <li>The extracted content will be copied to your clipboard and displayed in the text area above.</li>
       </ol>
+      <p><strong>Filter keywords:</strong> Use simple keywords or phrases to match sections to remove. Lines starting with # are comments.</p>
     </div>
   </div>
   
