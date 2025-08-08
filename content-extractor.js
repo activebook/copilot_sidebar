@@ -320,20 +320,34 @@
    */
   function filterMarkdown(markdown, customFilters = null) {
     let content = markdown;
-    let patterns = [];
-
-    // This is the boundary that separates content blocks we want to remove.
-    // It looks for the start of a new major section (H1-H2 heading) or a horizontal rule.
-    // IMPORTANT: We intentionally stop scanning at the next sibling H1/H2 (not H3/H4),
-    // so that when removing a "##" section we also remove all its nested "###/####" subsections.
-    const sectionBoundary = '(?=(?:\\n\\n|\\n|^)#{1,2} |\\n\\n---\\n|\\n\\n\\*\\*\\*\\n|$)';
-
+    
+    // If we have custom filters, use them. Otherwise, use the default filtering approach.
     if (customFilters) {
-      // Parse custom filters from the textarea input
+      // Parse custom keywords from the textarea input (one keyword per line)
       const lines = customFilters.split('\n').filter(line => line.trim() && !line.trim().startsWith('#'));
-      patterns = lines.map(line => line.trim());
+      const keywords = lines.map(line => line.trim());
+      
+      // Convert keywords to regex patterns and apply filtering
+      keywords.forEach(keyword => {
+        try {
+          // Create a pattern that matches headings or sections containing the keyword
+          const escapedKeyword = keyword.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+          const pattern = `(?:^|\\n{1,2})(?:#{1,3}|\\*\\*)?\\s*(?:${escapedKeyword})[^\\n]*\\s*:?\\s*\\n[\\s\\S]*?(?=(?:\\n\\n|\\n|^)#{1,2} |\\n\\n---\\n|\\n\\n\\*\\*\\*\\n|$)`;
+          content = content.replace(new RegExp(pattern, 'gi'), '\n\n');
+        } catch (e) {
+          console.warn('Invalid filter keyword:', keyword, e);
+        }
+      });
     } else {
       // Use default patterns if no custom filters provided
+      let patterns = [];
+
+      // This is the boundary that separates content blocks we want to remove.
+      // It looks for the start of a new major section (H1-H2 heading) or a horizontal rule.
+      // IMPORTANT: We intentionally stop scanning at the next sibling H1/H2 (not H3/H4),
+      // so that when removing a "##" section we also remove all its nested "###/####" subsections.
+      const sectionBoundary = '(?=(?:\\n\\n|\\n|^)#{1,2} |\\n\\n---\\n|\\n\\n\\*\\*\\*\\n|$)';
+
       patterns = [
         // Recommendation sections (e.g., "Read More", "Related Articles", "Editor's/Editors’ Picks", "Trending in X", "More in X")
         // Allow start-of-string or 1-2 newlines and markups like ### or **, followed by keywords.
@@ -358,44 +372,44 @@
         // Footers, copyright notices, and legal disclaimers. This is anchored to the end of the document.
         `\\n\\n(?:(?:\\*\\*Note\\*\\*|Disclaimer|Copyright|All rights reserved|Privacy Policy|Terms of Use)|(?:[^\\n]+ © \\d{4})|(?:© \\d{4} [^\\n]+))[\\s\\S]*?$`
       ];
+
+      patterns.forEach(pattern => {
+        try {
+          content = content.replace(new RegExp(pattern, 'gi'), '\n\n');
+        } catch (e) {
+          console.warn('Invalid filter pattern:', pattern, e);
+        }
+      });
+
+      // If we removed a parent "##" recommendation-like heading, also remove any nested "###/####" headings beneath it.
+      // We match a "##" removable heading and consume everything up to the next H1/H2 or end-of-file.
+      // This guarantees that all nested ###/#### inside the ## block are removed together.
+      content = content.replace(
+        /(?:^|\n)##\s*(?:Related(?:\s+Content)?|Editor['’]s\s+Picks|Trending(?:\s+in\s+[^\n]+)?|More\s+in\s+[^\n]+|More\s+from\s+[^\n]+|Recommended|Popular)[^\n]*\n[\s\S]*?(?=(?:\n#{1,2}\s|$))/gi,
+        '\n'
+      );
+
+      // Second pass: remove standalone keyword headings (## or ### etc.) that have no body under them
+      // when immediately followed by another heading or end-of-file.
+      const standaloneHeading = new RegExp(
+        '(?:^|\\n)(?:#{1,4})\\s*(?:' +
+          'Related(?:\\s+Content)?' +
+          '|Editor[\'’]s\\s+Picks' +
+          '|Trending(?:\\s+in\\s+[^\\n]+)?' +
+          '|More\\s+in\\s+[^\\n]+' +
+          '|More\\s+from\\s+[^\\n]+' +
+          '|Recommended' +
+          '|Popular' +
+        ')\\s*(?=\\n(?:#{1,6}\\s|$))',
+        'gi'
+      );
+
+      let prev;
+      do {
+        prev = content;
+        content = content.replace(standaloneHeading, '\n');
+      } while (content !== prev);
     }
-
-    patterns.forEach(pattern => {
-      try {
-        content = content.replace(new RegExp(pattern, 'gi'), '\n\n');
-      } catch (e) {
-        console.warn('Invalid filter pattern:', pattern, e);
-      }
-    });
-
-    // If we removed a parent "##" recommendation-like heading, also remove any nested "###/####" headings beneath it.
-    // We match a "##" removable heading and consume everything up to the next H1/H2 or end-of-file.
-    // This guarantees that all nested ###/#### inside the ## block are removed together.
-    content = content.replace(
-      /(?:^|\n)##\s*(?:Related(?:\s+Content)?|Editor['’]s\s+Picks|Trending(?:\s+in\s+[^\n]+)?|More\s+in\s+[^\n]+|More\s+from\s+[^\n]+|Recommended|Popular)[^\n]*\n[\s\S]*?(?=(?:\n#{1,2}\s|$))/gi,
-      '\n'
-    );
-
-    // Second pass: remove standalone keyword headings (## or ### etc.) that have no body under them
-    // when immediately followed by another heading or end-of-file.
-    const standaloneHeading = new RegExp(
-      '(?:^|\\n)(?:#{1,4})\\s*(?:' +
-        'Related(?:\\s+Content)?' +
-        '|Editor[\'’]s\\s+Picks' +
-        '|Trending(?:\\s+in\\s+[^\\n]+)?' +
-        '|More\\s+in\\s+[^\\n]+' +
-        '|More\\s+from\\s+[^\\n]+' +
-        '|Recommended' +
-        '|Popular' +
-      ')\\s*(?=\\n(?:#{1,6}\\s|$))',
-      'gi'
-    );
-
-    let prev;
-    do {
-      prev = content;
-      content = content.replace(standaloneHeading, '\n');
-    } while (content !== prev);
 
     // Final cleanup to normalize whitespace
     content = content.replace(/\n{3,}/g, '\n\n'); // Collapse excess newlines
