@@ -23,6 +23,12 @@
       "48": "images/icon48.png"
     }
   },
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["content-extractor.js"]
+    }
+  ],
   "commands": {
     "extension.extractAndCopy": {
       "suggested_key": {
