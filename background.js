@@ -85,6 +85,62 @@ chrome.action.onClicked.addListener(async (tab) => {
   flashBadge('↯', '#1a73e8', 1000);
 });
 
+const DEFAULT_FILTERS = `# Recommendation sections
+Read More
+Read Next
+Also Read
+Related Articles
+Related Content
+Further Reading
+More from
+Don't Miss
+Up Next
+Recommended
+Trending
+Popular
+In Case You Missed It
+You Might Also Like
+Continue Reading
+Related Stories
+More Stories
+Latest News
+Editor's Picks
+What to Read Next
+
+# Social media and newsletters
+Share this article
+Follow us on
+Connect with us
+Join our newsletter
+Sign up for updates
+Enter your email
+Subscribe to our newsletter
+Get the latest updates
+Don't miss out
+
+# Comment sections
+Comments
+Discussions
+Leave a Reply
+Add Your Comment
+Reader Comments
+
+# Author biographies
+About the Author
+Author Bio
+
+# Tags and categories
+Tags
+Categories
+Filed Under
+
+# Legal and footer content
+Disclaimer
+Copyright
+All rights reserved
+Privacy Policy
+Terms of Use`;
+
 // Listen for keyboard command to extract and copy to clipboard without opening sidebar.
 // Alt+E mapped to "extension.extractAndCopy" in manifest.
 chrome.commands.onCommand.addListener(async (command) => {
@@ -104,7 +160,7 @@ chrome.commands.onCommand.addListener(async (command) => {
     // Get custom filter patterns
     const { filterPatterns } = await chrome.storage.sync.get('filterPatterns');
     // Ensure we pass a string to the extractor; if unset or empty, send an empty string to use defaults in page logic
-    const patterns = (typeof filterPatterns === 'string' && filterPatterns.trim().length > 0) ? filterPatterns : '';
+    const patterns = (typeof filterPatterns === 'string' && filterPatterns.trim().length > 0) ? filterPatterns : DEFAULT_FILTERS;
     
     // Execute the existing content-script extractor in the page context with custom filters
     const results = await chrome.scripting.executeScript({
@@ -360,7 +416,7 @@ chrome.commands.onCommand.addListener(async (command) => {
           keywords.forEach(keyword => {
             try {
               // Create a pattern that matches headings or sections containing the keyword
-              const pattern = `(?:^|\n{1,2})(?:#{1,3}|\*\*)?\s*(?:${keyword.replace(/[.*+?^${}()[\]\\]/g, '\\$&')})[^\n]*\s*:?\s*\n[\s\S]*?(?=(?:\n\n|\n|^)#{1,2} |\n\n---\n|\n\n\*\*\*\n|$)`;
+              const pattern = `(?:^|\n{1,2})(?:#{1,3}|\*\*)?\s*(?:${keyword.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})[^\n]*\s*:?\s*\n[\\s\\S]*?(?=(?:\n\n|\n|^)#{1,2} |\n\n---\n|\n\n\*\*\*\n|$)`;
               content = content.replace(new RegExp(pattern, 'gi'), '\n\n');
             } catch (e) {
               console.warn('Invalid filter keyword:', keyword, e);
@@ -368,7 +424,7 @@ chrome.commands.onCommand.addListener(async (command) => {
           });
           
           // Additional cleanup for footers and copyright sections
-          const footerPattern = '\n\n(?:(?:\*\*Note\*\*|Disclaimer|Copyright|All rights reserved|Privacy Policy|Terms of Use)|(?:[^\n]+ © \d{4})|(?:© \d{4} [^\n]+))[\s\S]*?';
+          const footerPattern = '\n\n(?:(?:\*\*Note\*\*|Disclaimer|Copyright|All rights reserved|Privacy Policy|Terms of Use)|(?:[^\n]+ © \d{4})|(?:© \d{4} [^\n]+))[\\s\\S]*?';
           try {
             content = content.replace(new RegExp(footerPattern, 'gi'), '\n');
           } catch (e) {
@@ -376,7 +432,7 @@ chrome.commands.onCommand.addListener(async (command) => {
           }
           
           // Remove standalone link lists
-          const linkListPattern = '\n(?:\s*[-*]\s*\[[^\]]+\]\\([^\]]+\\)\\s*){3,}\n';
+          const linkListPattern = '\n(?:\\s*[-*]\\s*\[[^\]]+\]\\([^)]+\\)\\s*){3,}\n';
           try {
             content = content.replace(new RegExp(linkListPattern, 'gi'), '\n');
           } catch (e) {
