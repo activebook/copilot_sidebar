@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Copilot Sidebar",
-  "version": "3.3",
+  "version": "3.5",
   "description": "A sidebar extension to extract web content and build prompts for AI models.",
   "permissions": ["sidePanel", "tabs", "clipboardWrite", "scripting", "storage", "notifications"],
   "host_permissions": ["<all_urls>"],
@@ -23,6 +23,12 @@
       "48": "images/icon48.png"
     }
   },
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["content-extractor.js", "paragraph-icons.js"]
+    }
+  ],
   "commands": {
     "extension.extractAndCopy": {
       "suggested_key": {
