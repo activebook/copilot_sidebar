@@ -157,18 +157,17 @@ chrome.commands.onCommand.addListener(async (command) => {
       });
     } catch (_) {}
 
-    // Get custom filter patterns
+    // Get custom filter patterns from storage, falling back to defaults.
     const { filterPatterns } = await chrome.storage.sync.get('filterPatterns');
-    // Ensure we pass a string to the extractor; if unset or empty, send an empty string to use defaults in page logic
-    const patterns = (typeof filterPatterns === 'string' && filterPatterns.trim().length > 0) ? filterPatterns : DEFAULT_FILTERS;
+    const patterns = filterPatterns || DEFAULT_FILTERS;
     
     // Execute the existing content-script extractor in the page context with custom filters
     const results = await chrome.scripting.executeScript({
       target: { tabId: activeTab.id },
       args: [patterns],
       func: (customFilters) => {
-        // Store custom filters globally first
-        window.__customFilters = customFilters;
+        // This function is injected into the page and has no access to the background script's scope.
+        // All functions and data it needs must be defined here.
         
         // Define the extraction function inline with custom filter support
         function extractMainContent() {
@@ -408,15 +407,14 @@ chrome.commands.onCommand.addListener(async (command) => {
             // Parse custom keywords from the textarea input (one keyword per line)
             const lines = customFilters.split('\n').filter(line => line.trim() && !line.trim().startsWith('#'));
             keywords = lines.map(line => line.trim());
-          } else {
-            return content;
           }
+          // No 'else' block needed here. If customFilters is empty, keywords will be an empty array, and no filtering will happen.
           
           // Convert keywords to regex patterns and apply filtering
           keywords.forEach(keyword => {
             try {
               // Create a pattern that matches headings or sections containing the keyword
-              const pattern = `(?:^|\n{1,2})(?:#{1,3}|\*\*)?\s*(?:${keyword.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})[^\n]*\s*:?\s*\n[\\s\\S]*?(?=(?:\n\n|\n|^)#{1,2} |\n\n---\n|\n\n\*\*\*\n|$)`;
+              const pattern = `(?:^|\n{1,2})(?:#{1,3}|\*\*)?\s*(?:${keyword.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})[^\n]*\s*:?\s*\n[\s\S]*?(?=(?:\n\n|\n|^)#{1,2} |\n\n---|\n\n\*\*\*|$)`;
               content = content.replace(new RegExp(pattern, 'gi'), '\n\n');
             } catch (e) {
               console.warn('Invalid filter keyword:', keyword, e);
@@ -424,7 +422,7 @@ chrome.commands.onCommand.addListener(async (command) => {
           });
           
           // Additional cleanup for footers and copyright sections
-          const footerPattern = '\n\n(?:(?:\*\*Note\*\*|Disclaimer|Copyright|All rights reserved|Privacy Policy|Terms of Use)|(?:[^\n]+ © \d{4})|(?:© \d{4} [^\n]+))[\\s\\S]*?';
+          const footerPattern = '\n\n(?:(?:\*\*Note\*\*|Disclaimer|Copyright|All rights reserved|Privacy Policy|Terms of Use)|(?:[^\n]+ © \d{4})|(?:© \d{4} [^\n]+))[\s\S]*?';
           try {
             content = content.replace(new RegExp(footerPattern, 'gi'), '\n');
           } catch (e) {
@@ -432,7 +430,7 @@ chrome.commands.onCommand.addListener(async (command) => {
           }
           
           // Remove standalone link lists
-          const linkListPattern = '\n(?:\\s*[-*]\\s*\[[^\]]+\]\\([^)]+\\)\\s*){3,}\n';
+          const linkListPattern = '\n(?:\s*[-*]\s*\[[^\]]+\]\\([^)]+\\)\\s*){3,}\n';
           try {
             content = content.replace(new RegExp(linkListPattern, 'gi'), '\n');
           } catch (e) {
