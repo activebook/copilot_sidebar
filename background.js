@@ -408,13 +408,13 @@ chrome.commands.onCommand.addListener(async (command) => {
             const lines = customFilters.split('\n').filter(line => line.trim() && !line.trim().startsWith('#'));
             keywords = lines.map(line => line.trim());
           }
-          // No 'else' block needed here. If customFilters is empty, keywords will be an empty array, and no filtering will happen.
+          // If customFilters is empty, keywords will be an empty array, and no filtering will happen.
           
           // Convert keywords to regex patterns and apply filtering
           keywords.forEach(keyword => {
             try {
               // Create a pattern that matches headings or sections containing the keyword
-              const pattern = `(?:^|\n{1,2})(?:#{1,3}|\*\*)?\s*(?:${keyword.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})[^\n]*\s*:?\s*\n[\s\S]*?(?=(?:\n\n|\n|^)#{1,2} |\n\n---|\n\n\*\*\*|$)`;
+              const pattern = `(?:^|\n{1,2})(?:#{1,3}|\*\*)?\s*(?:${keyword.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})[^\n]*\s*:?\s*\n[\s\S]*?(?=(?:\n\n|\n|^)#{1,2} |\n\n---\n|\n\n\*\*\*\n|$)`;
               content = content.replace(new RegExp(pattern, 'gi'), '\n\n');
             } catch (e) {
               console.warn('Invalid filter keyword:', keyword, e);
