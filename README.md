@@ -18,9 +18,7 @@ A Chrome side panel extension that extracts the main content of webpages into cl
 
 ## Screenshots
 
-- Sidebar
-  ![Sidebar](howto/sidebar.png)
-
+![Sidebar](howto/sidebar.png)
 
 ## Install (Load Unpacked)
 
