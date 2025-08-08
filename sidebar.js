@@ -366,10 +366,3 @@ chrome.runtime.onMessage.addListener(async (msg) => {
     handleParagraphSelectedMessage(msg);
   }
 });
-
-// On load, request the background to inject the paragraph icon script in the active tab
-(async function tryInjectParagraphIcons() {
-  try {
-    chrome.runtime.sendMessage({ type: 'REQUEST_INJECT_PARAGRAPH_ICONS' });
-  } catch (_) {}
-})();

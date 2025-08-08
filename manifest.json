@@ -26,7 +26,7 @@
   "content_scripts": [
     {
       "matches": ["<all_urls>"],
-      "js": ["content-extractor.js"]
+      "js": ["content-extractor.js", "paragraph-icons.js"]
     }
   ],
   "commands": {
