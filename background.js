@@ -353,26 +353,14 @@ chrome.commands.onCommand.addListener(async (command) => {
             const lines = customFilters.split('\n').filter(line => line.trim() && !line.trim().startsWith('#'));
             keywords = lines.map(line => line.trim());
           } else {
-            // Use default keywords if no custom filters provided
-            keywords = [
-              'Read More', 'Read Next', 'Also Read', 'Related Articles', 'Related Content', 
-              'Further Reading', 'More from', "Don't Miss", 'Up Next', 'Recommended', 
-              'Trending', 'Popular', 'In Case You Missed It', 'You Might Also Like', 
-              'Continue Reading', 'Related Stories', 'More Stories', 'Latest News', 
-              "Editor's Picks", 'What to Read Next', 'Share this article', 'Follow us on', 
-              'Connect with us', 'Join our newsletter', 'Sign up for updates', 'Enter your email', 
-              'Subscribe to our newsletter', 'Get the latest updates', "Don't miss out", 
-              'Comments', 'Discussions', 'Leave a Reply', 'Add Your Comment', 'Reader Comments', 
-              'About the Author', 'Author Bio', 'Tags', 'Categories', 'Filed Under', 
-              'Disclaimer', 'Copyright', 'All rights reserved', 'Privacy Policy', 'Terms of Use'
-            ];
+            return content;
           }
           
           // Convert keywords to regex patterns and apply filtering
           keywords.forEach(keyword => {
             try {
               // Create a pattern that matches headings or sections containing the keyword
-              const pattern = `(?:^|\n{1,2})(?:#{1,3}|\*\*)?\s*(?:${keyword.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})[^\n]*\s*:?\s*\n[\s\S]*?(?=(?:\n\n|\n|^)#{1,2} |\n\n---\n|\n\n\*\*\*\n|$)`;
+              const pattern = `(?:^|\n{1,2})(?:#{1,3}|\*\*)?\s*(?:${keyword.replace(/[.*+?^${}()[\]\\]/g, '\\$&')})[^\n]*\s*:?\s*\n[\s\S]*?(?=(?:\n\n|\n|^)#{1,2} |\n\n---\n|\n\n\*\*\*\n|$)`;
               content = content.replace(new RegExp(pattern, 'gi'), '\n\n');
             } catch (e) {
               console.warn('Invalid filter keyword:', keyword, e);
