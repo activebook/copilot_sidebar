@@ -356,12 +356,12 @@ chrome.commands.onCommand.addListener(async (command) => {
             // Use default keywords if no custom filters provided
             keywords = [
               'Read More', 'Read Next', 'Also Read', 'Related Articles', 'Related Content', 
-              'Further Reading', 'More from', 'Don\'t Miss', 'Up Next', 'Recommended', 
+              'Further Reading', 'More from', "Don't Miss", 'Up Next', 'Recommended', 
               'Trending', 'Popular', 'In Case You Missed It', 'You Might Also Like', 
               'Continue Reading', 'Related Stories', 'More Stories', 'Latest News', 
-              'Editor\'s Picks', 'What to Read Next', 'Share this article', 'Follow us on', 
+              "Editor's Picks", 'What to Read Next', 'Share this article', 'Follow us on', 
               'Connect with us', 'Join our newsletter', 'Sign up for updates', 'Enter your email', 
-              'Subscribe to our newsletter', 'Get the latest updates', 'Don\'t miss out', 
+              'Subscribe to our newsletter', 'Get the latest updates', "Don't miss out", 
               'Comments', 'Discussions', 'Leave a Reply', 'Add Your Comment', 'Reader Comments', 
               'About the Author', 'Author Bio', 'Tags', 'Categories', 'Filed Under', 
               'Disclaimer', 'Copyright', 'All rights reserved', 'Privacy Policy', 'Terms of Use'
@@ -372,38 +372,7 @@ chrome.commands.onCommand.addListener(async (command) => {
           keywords.forEach(keyword => {
             try {
               // Create a pattern that matches headings or sections containing the keyword
-              const pattern = `(?:^|\\n{1,2})(?:#{1,3}|\\*\\*)?\\s*(?:${keyword.replace(/[.*+?^${}()[\]\\]/g, '\\// Execute the existing content-script extractor in the page context with custom filters
-    const results = await chrome.scripting.executeScript({
-      target: { tabId: activeTab.id },
-      args: [patterns],
-      func: (customFilters) => {
-        // Use a Promise to wait for the content script to finish
-        return new Promise((resolve) => {
-          // Define a listener for when the content script is done
-          const listener = (event) => {
-            resolve(event.detail); // Resolve with the data from the event
-            window.removeEventListener('copilotSidebarExtractionDone', listener);
-          };
-          window.addEventListener('copilotSidebarExtractionDone', listener, { once: true });
-
-          // Store custom filters globally for the content script
-          window.__customFilters = customFilters;
-
-          // Execute the content script by injecting it
-          const script = document.createElement('script');
-          script.src = chrome.runtime.getURL('content-script.js');
-          script.onload = function () {
-            this.remove();
-          };
-          script.onerror = () => {
-            // If the script fails to load, resolve with null to prevent hanging
-            window.removeEventListener('copilotSidebarExtractionDone', listener);
-            resolve(null);
-          };
-          (document.head || document.documentElement).appendChild(script);
-        });
-      }
-    });')})[^\\n]*\\s*:?\\s*\\n[\\s\\S]*?(?=(?:\\n\\n|\\n|^)#{1,2} |\\n\\n---\\n|\\n\\n\\*\\*\\*\\n|$)`;
+              const pattern = `(?:^|\n{1,2})(?:#{1,3}|\*\*)?\s*(?:${keyword.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})[^\n]*\s*:?\s*\n[\s\S]*?(?=(?:\n\n|\n|^)#{1,2} |\n\n---\n|\n\n\*\*\*\n|$)`;
               content = content.replace(new RegExp(pattern, 'gi'), '\n\n');
             } catch (e) {
               console.warn('Invalid filter keyword:', keyword, e);
@@ -411,150 +380,7 @@ chrome.commands.onCommand.addListener(async (command) => {
           });
           
           // Additional cleanup for footers and copyright sections
-          const footerPattern = '\\n\\n(?:(?:\\*\\*Note\\*\\*|Disclaimer|Copyright|All rights reserved|Privacy Policy|Terms of Use)|(?:[^\\n]+ © \\d{4})|(?:© \\d{4} [^\\n]+))[\\s\\S]*?
-
-    let extractedText = '';
-    if (results && results.length > 0) {
-      const value = results[0].result;
-      if (value && typeof value === 'object' && 'markdown' in value) {
-        extractedText = value.markdown || '';
-      } else if (typeof value === 'string') {
-        extractedText = value;
-      }
-    }
-
-    // Prepend the user's saved custom prompt (from sidebar) before the extracted content
-    if (extractedText) {
-      const pageTitle = activeTab.title || '';
-      const pageUrl = activeTab.url || '';
-      // Read the prompt saved by the sidebar from sync storage
-      const { customPrompt } = await chrome.storage.sync.get('customPrompt');
-      const headerParts = [];
-      if (customPrompt && typeof customPrompt === 'string' && customPrompt.trim().length > 0) {
-        headerParts.push(customPrompt.trim());
-      }
-      // Always include a lightweight Source line for grounding
-      headerParts.push(`Source: ${pageTitle} — ${pageUrl}`);
-      const header = headerParts.join('\n') + '\n\n';
-      extractedText = header + extractedText;
-    }
-
-    // Copy to clipboard via page context (service worker has no navigator.clipboard)
-    if (extractedText) {
-      const ok = await writeToClipboardViaPage(activeTab.id, extractedText);
-      if (ok) {
-        // Success: flash green OK + OS notification
-        flashBadge('Done', '#1e8e3e', 2000);
-        try {
-          chrome.notifications.create({
-            type: 'basic',
-            iconUrl: 'images/icon128.png',
-            title: 'Content copied',
-            message: 'Saved prompt + extracted content copied to clipboard.'
-          });
-        } catch (_) {}
-      } else {
-        // Copy failed: flash red ERR + OS notification
-        flashBadge('ERR', '#d93025', 2000);
-        try {
-          chrome.notifications.create({
-            type: 'basic',
-            iconUrl: 'images/icon128.png',
-            title: 'Copy failed',
-            message: 'Failed to copy saved prompt + content to clipboard.'
-          });
-        } catch (_) {}
-      }
-    } else {
-      // No content extracted: flash neutral N/A + OS notification
-      flashBadge('N/A', '#5f6368', 1800);
-      try {
-        chrome.notifications.create({
-          type: 'basic',
-          iconUrl: 'images/icon128.png',
-          title: 'No content extracted',
-          message: 'Could not extract content from this page.'
-        });
-      } catch (_) {}
-    }
-  } catch (err) {
-    console.error('Command handling failed:', err);
-    // Unexpected error: flash red ERR + OS notification
-    flashBadge('ERR', '#d93025', 2200);
-    try {
-      chrome.notifications.create({
-        type: 'basic',
-        iconUrl: 'images/icon128.png',
-        title: 'Extraction error',
-        message: 'An error occurred while extracting content.'
-      });
-    } catch (_) {}
-  }
-});
-
-// Listen for requests from the sidebar to (re)inject the paragraph icon script on demand
-chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
-  if (!msg || !msg.type) return false;
-
-  if (msg.type === 'REQUEST_INJECT_PARAGRAPH_ICONS') {
-    (async () => {
-      try {
-        const [activeTab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
-        if (activeTab && activeTab.id) {
-          await chrome.scripting.executeScript({
-            target: { tabId: activeTab.id },
-            files: ['paragraph-icons.js']
-          });
-          sendResponse && sendResponse({ ok: true });
-        } else {
-          sendResponse && sendResponse({ ok: false, error: 'No active tab' });
-        }
-      } catch (e) {
-        console.warn('Injection request failed:', e);
-        sendResponse && sendResponse({ ok: false, error: String(e && e.message || e) });
-      }
-    })();
-    // Indicate async response
-    return true;
-  }
-
-  // Keep listener stub in case other messages are added later; no-op for other types
-  return false;
-});
-
-// Auto-inject paragraph icons when switching active tab or when a tab is updated (navigated)
-chrome.tabs.onActivated.addListener(async () => {
-  try {
-    await injectParagraphIconsIntoActiveTab();
-  } catch (e) {
-    // ignore
-  }
-});
-
-chrome.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
-  try {
-    // Inject when page finishes loading main content or on URL change
-    if (changeInfo.status === 'complete' || changeInfo.url) {
-      await chrome.scripting.executeScript({
-        target: { tabId },
-        files: ['paragraph-icons.js']
-      });
-    }
-  } catch (e) {
-    // ignore per-tab failures
-  }
-});
-
-// Helper: inject into the current active tab in the current window
-async function injectParagraphIconsIntoActiveTab() {
-  const [activeTab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
-  if (activeTab && activeTab.id) {
-    await chrome.scripting.executeScript({
-      target: { tabId: activeTab.id },
-      files: ['paragraph-icons.js']
-    });
-  }
-};
+          const footerPattern = '\n\n(?:(?:\*\*Note\*\*|Disclaimer|Copyright|All rights reserved|Privacy Policy|Terms of Use)|(?:[^\n]+ © \d{4})|(?:© \d{4} [^\n]+))[\s\S]*?';
           try {
             content = content.replace(new RegExp(footerPattern, 'gi'), '\n');
           } catch (e) {
@@ -562,7 +388,7 @@ async function injectParagraphIconsIntoActiveTab() {
           }
           
           // Remove standalone link lists
-          const linkListPattern = '\\n(?:\\s*[-*]\\s*\\[[^\]]+\\]\\([^)]+\\)\\s*){3,}\\n';
+          const linkListPattern = '\n(?:\s*[-*]\s*\[[^\]]+\]\\([^\]]+\\)\\s*){3,}\n';
           try {
             content = content.replace(new RegExp(linkListPattern, 'gi'), '\n');
           } catch (e) {
