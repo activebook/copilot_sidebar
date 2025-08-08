@@ -149,14 +149,6 @@ chrome.commands.onCommand.addListener(async (command) => {
     const [activeTab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
     if (!activeTab || !activeTab.id) return;
 
-    // Ensure paragraph icons script is active on the current tab as part of auto behavior
-    try {
-      await chrome.scripting.executeScript({
-        target: { tabId: activeTab.id },
-        files: ['paragraph-icons.js']
-      });
-    } catch (_) {}
-
     // Get custom filter patterns from storage, falling back to defaults.
     const { filterPatterns } = await chrome.storage.sync.get('filterPatterns');
     const patterns = filterPatterns || DEFAULT_FILTERS;
@@ -267,36 +259,6 @@ chrome.commands.onCommand.addListener(async (command) => {
       });
     } catch (_) {}
   }
-});
-
-// Listen for requests from the sidebar to (re)inject the paragraph icon script on demand
-chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
-  if (!msg || !msg.type) return false;
-
-  if (msg.type === 'REQUEST_INJECT_PARAGRAPH_ICONS') {
-    (async () => {
-      try {
-        const [activeTab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
-        if (activeTab && activeTab.id) {
-          await chrome.scripting.executeScript({
-            target: { tabId: activeTab.id },
-            files: ['paragraph-icons.js']
-          });
-          sendResponse && sendResponse({ ok: true });
-        } else {
-          sendResponse && sendResponse({ ok: false, error: 'No active tab' });
-        }
-      } catch (e) {
-        console.warn('Injection request failed:', e);
-        sendResponse && sendResponse({ ok: false, error: String(e && e.message || e) });
-      }
-    })();
-    // Indicate async response
-    return true;
-  }
-
-  // Keep listener stub in case other messages are added later; no-op for other types
-  return false;
 });
 
 // Auto-inject paragraph icons when switching active tab or when a tab is updated (navigated)
