@@ -157,12 +157,14 @@ chrome.commands.onCommand.addListener(async (command) => {
     const [activeTab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
     if (!activeTab || !activeTab.id) return;
 
-    // Ensure paragraph icons script is active on the current tab as part of auto behavior
+    // Ensure all required scripts are active on the current tab
     try {
       await chrome.scripting.executeScript({
         target: { tabId: activeTab.id },
-        files: ['paragraph-icons.js']
+        files: ['paragraph-icons.js', 'inpage-notifications.js']
       });
+      // Small delay to ensure scripts are fully loaded
+      await new Promise(resolve => setTimeout(resolve, 100));
     } catch (_) {}
 
     // Get custom filter patterns from storage, falling back to defaults.
@@ -228,52 +230,75 @@ chrome.commands.onCommand.addListener(async (command) => {
     if (extractedText) {
       const ok = await writeToClipboardViaPage(activeTab.id, extractedText);
       if (ok) {
-        // Success: flash green OK + OS notification
+        // Success: flash green OK + in-page notification
         flashBadge('Done', '#1e8e3e', 2000);
         try {
-          chrome.notifications.create({
-            type: 'basic',
-            iconUrl: 'images/icon128.png',
-            title: 'Content copied',
-            message: 'Saved prompt + extracted content copied to clipboard.'
+          await chrome.tabs.sendMessage(activeTab.id, {
+            type: 'SHOW_INPAGE_NOTIFICATION',
+            data: {
+              notificationType: 'success',
+              title: 'Content Copied',
+              message: 'Saved prompt + extracted content copied to clipboard.',
+              duration: 4000
+            }
           });
-        } catch (_) {}
+        } catch (e) {
+          console.warn('Failed to send success notification:', e);
+        }
       } else {
-        // Copy failed: flash red ERR + OS notification
+        // Copy failed: flash red ERR + in-page notification
         flashBadge('ERR', '#d93025', 2000);
         try {
-          chrome.notifications.create({
-            type: 'basic',
-            iconUrl: 'images/icon128.png',
-            title: 'Copy failed',
-            message: 'Failed to copy saved prompt + content to clipboard.'
+          await chrome.tabs.sendMessage(activeTab.id, {
+            type: 'SHOW_INPAGE_NOTIFICATION',
+            data: {
+              notificationType: 'error',
+              title: 'Copy Failed',
+              message: 'Failed to copy saved prompt + content to clipboard.',
+              duration: 4000
+            }
           });
-        } catch (_) {}
+        } catch (e) {
+          console.warn('Failed to send error notification:', e);
+        }
       }
     } else {
-      // No content extracted: flash neutral N/A + OS notification
+      // No content extracted: flash neutral N/A + in-page notification
       flashBadge('N/A', '#5f6368', 1800);
       try {
-        chrome.notifications.create({
-          type: 'basic',
-          iconUrl: 'images/icon128.png',
-          title: 'No content extracted',
-          message: 'Could not extract content from this page.'
-        });
-      } catch (_) {}
+          await chrome.tabs.sendMessage(activeTab.id, {
+            type: 'SHOW_INPAGE_NOTIFICATION',
+            data: {
+              notificationType: 'warning',
+              title: 'No Content Extracted',
+              message: 'Could not extract content from this page.',
+              duration: 3500
+            }
+          });
+        } catch (e) {
+          console.warn('Failed to send warning notification:', e);
+        }
     }
   } catch (err) {
     console.error('Command handling failed:', err);
-    // Unexpected error: flash red ERR + OS notification
+    // Unexpected error: flash red ERR + in-page notification
     flashBadge('ERR', '#d93025', 2200);
     try {
-      chrome.notifications.create({
-        type: 'basic',
-        iconUrl: 'images/icon128.png',
-        title: 'Extraction error',
-        message: 'An error occurred while extracting content: ' + (err.message || String(err))
-      });
-    } catch (_) {}
+      const [activeTab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
+      if (activeTab && activeTab.id) {
+        await chrome.tabs.sendMessage(activeTab.id, {
+          type: 'SHOW_INPAGE_NOTIFICATION',
+          data: {
+            notificationType: 'error',
+            title: 'Extraction Error',
+            message: 'An error occurred while extracting content: ' + (err.message || String(err)),
+            duration: 4500
+          }
+        });
+      }
+    } catch (e) {
+      console.warn('Failed to send extraction error notification:', e);
+    }
   }
 });
 
