@@ -16,10 +16,6 @@ YELLOW='\033[1;33m'
 NC='\033[0m' # No Color
 
 # Logging functions
-log_stderr() {
-    echo -e "${GREEN}[$(date +'%Y-%m-%d %H:%M:%S')] $1${NC}" >&2
-}
-
 log() {
     echo -e "${GREEN}[$(date +'%Y-%m-%d %H:%M:%S')] $1${NC}"
 }
@@ -76,11 +72,12 @@ get_version() {
 # Build the extension
 build_extension() {
     local version="$1"
+    local output_file="$2" 
     local build_dir="$BUILD_ROOT"
     local zip_file="$build_dir/${EXTENSION_NAME}-${version}.zip"
     local crx_file="$build_dir/${EXTENSION_NAME}-${version}.crx"
     
-    log_stderr "Building extension version $version..."
+    log "Building extension version $version..."
     
     # Create build directory
     mkdir -p "$build_dir"
@@ -89,7 +86,7 @@ build_extension() {
     rm -f "$build_dir"/*.{zip,crx}
     
     # Create zip file
-    log_stderr "Creating zip archive..."
+    log "Creating zip archive..."
     (cd "$PROJECT_ROOT" && zip -r "$zip_file" .         -x ".git/*" ".gitignore" ".qodo/*" "cd/*" "build/*" "*.md" ".github/*" "howto/*") >/dev/null
     
     # Verify zip file was created
@@ -97,12 +94,12 @@ build_extension() {
         error "Failed to create zip file: $zip_file"
     fi
     
-    log_stderr "Zip file created successfully: $zip_file"
-    
+    log "Zip file created successfully: $zip_file"
+
     # Check if we have a private key for CRX signing
     local private_key="$BUILD_ROOT/private.pem"
     if [[ -f "$private_key" ]]; then
-        log_stderr "Signing CRX with private key..."
+        log "Signing CRX with private key..."
         
         # Find Chrome/Chromium binary
         local chrome_bin=""
@@ -120,6 +117,8 @@ build_extension() {
             warn "Chrome/Chromium not found, skipping CRX creation"
             crx_file=""
         fi
+
+        log "Chrome is at: $chrome_bin"
         
         if [[ -n "$chrome_bin" ]]; then
             # Create a temporary directory for the extension files
@@ -148,7 +147,7 @@ build_extension() {
             local generated_crx="$temp_ext_dir.crx"
             if [[ -f "$generated_crx" ]]; then
                 mv "$generated_crx" "$crx_file"
-                log_stderr "CRX file created: $crx_file"
+                log "CRX file created: $crx_file"
             else
                 warn "Failed to create CRX file using Chrome"
                 crx_file=""
@@ -163,8 +162,8 @@ build_extension() {
     fi
     
     # Return both file paths (without any logging interference)
-    echo "$zip_file"
-    echo "$crx_file"
+    echo "$zip_file" > "$output_file"
+    echo "$crx_file" >> "$output_file"
 }
 
 # Create GitHub release
@@ -328,9 +327,26 @@ main() {
     # Because it use build_extension returns as parameters
     # So if we output log inside build_extension, it will be in the final output
     # Build extension
+:<<"bug for log and echo mixed"
     local build_files=$(build_extension "$version")
     local zip_file=$(echo "$build_files" | head -n1)
     local crx_file=$(echo "$build_files" | tail -n1)
+bug for log and echo mixed
+
+    local tmp_file=$(mktemp)
+    #log "Tmp file for building: $tmp_file"
+    
+    # Pass to build_extension, must use $() to pass the parameters
+    # If build_extension "$version" "$tmp_file", doesn't work
+    # Because inside build_extension, it would change directory to run chrome bin
+    # That would make build_extension return
+    # So use $(build_extension ) to get return, the shell would wait for build_extension to finish
+
+    #build_extension "$version" "$tmp_file"
+    local result=$(build_extension "$version" "$tmp_file")
+    local zip_file=$(head -n1 "$tmp_file")
+    local crx_file=$(tail -n1 "$tmp_file")
+    #rm "$tmp_file"
 
     # Debug output to see what files were created
     log "Build files output:"
