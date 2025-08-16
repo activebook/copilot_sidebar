@@ -18,6 +18,8 @@ A Chrome side panel extension that extracts the main content of webpages into cl
 
 ## Screenshots
 
+![Notification](howto/notification.png)
+
 ![Sidebar](howto/sidebar.png)
 
 ## Install (Load Unpacked)
@@ -46,7 +48,7 @@ A Chrome side panel extension that extracts the main content of webpages into cl
 
 ## Permissions
 
-- permissions: sidePanel, tabs, clipboardWrite, scripting, storage, notifications
+- permissions: sidePanel, tabs, clipboardWrite, scripting, storage
 - host_permissions: <all_urls>
 
 ## License
