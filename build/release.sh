@@ -3,6 +3,8 @@
 # Continuous Delivery/Deployment Script for Chrome Extension
 # This script builds and releases a CRX file to GitHub
 
+# If anything fails, exit
+# Remember that subshell commands will fail and also exit the script
 set -euo pipefail
 
 # Configuration
@@ -17,7 +19,7 @@ NC='\033[0m' # No Color
 
 # Logging functions
 log() {
-    echo -e "${GREEN}[$(date +'%Y-%m-%d %H:%M:%S')] $1${NC}"
+    echo -e "${GREEN}[$(date +'%Y-%m-%d %H:%M:%S')] $1${NC}" >&2
 }
 
 warn() {
@@ -338,11 +340,14 @@ bug for log and echo mixed
     
     # Pass to build_extension, must use $() to pass the parameters
     # If build_extension "$version" "$tmp_file", doesn't work
-    # Because inside build_extension, it would change directory to run chrome bin
-    # That would make build_extension return
-    # So use $(build_extension ) to get return, the shell would wait for build_extension to finish
+    # Because set -euo pipefail
+    # That would make build_extension return, if any subshell command fails, such as chrome command
+    # When use $(build_extension ) to get return, 
+    # the function runs in a subshell, and even if it fails, the parent shell doesn't exit because set -e only applies within that subshell.
 
+    # only commend out set -euo pipefail to use the command below
     #build_extension "$version" "$tmp_file"
+
     local result=$(build_extension "$version" "$tmp_file")
     local zip_file=$(head -n1 "$tmp_file")
     local crx_file=$(tail -n1 "$tmp_file")
