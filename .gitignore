@@ -1,2 +1,7 @@
 # Ignore cd folder
 cd/
+
+# Environment variables
+.env
+.env.local
+.env.*.local
