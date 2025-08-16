@@ -5,3 +5,6 @@ cd/
 .env
 .env.local
 .env.*.local
+
+# Private key
+private.pem
