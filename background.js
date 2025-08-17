@@ -15,6 +15,9 @@ function flashBadge(text, color, ms = 2000) {
   }
 }
 
+// Track sidebar state
+let sidebarOpenedTabId = null;
+
 // Utility: write text to clipboard from background using a temporary tab page
 // navigator.clipboard is not available in service worker; use tabs.executeScript to write in-page.
 async function writeToClipboardViaPage(tabId, text) {
@@ -71,26 +74,72 @@ chrome.runtime.onInstalled.addListener(() => {
     console.warn('Badge init error:', e);
   }
   // Try to inject paragraph-icons into the currently active tab after install/update
-  injectParagraphIconsIntoActiveTab().catch(() => {});
+  injectParagraphIconsIntoActiveTab().catch(() => { });
 });
 
-// When the extension's action button is clicked, open the sidebar
-chrome.action.onClicked.addListener(async (tab) => {
-  // Open the side panel (action clicks count as user gestures)
-  await chrome.sidePanel.open({ tabId: tab.id });
+// Listen for messages from sidebar about its state
+chrome.runtime.onMessage.addListener((msg, sender) => {
+  if (!msg || !msg.type) return false;
 
-  // Also trigger extraction after opening
-  // Wrap in a timeout to give the sidebar time to set up its message listener
-  setTimeout(() => {
-    chrome.runtime.sendMessage({ type: 'TRIGGER_EXTRACTION' })
-      .catch((error) => {
-        // This is expected if the sidebar isn't ready yet
-        console.debug('Sidebar not ready for message, will retry:', error.message);
-      });
-  }, 500);
-  
-  // Provide a subtle badge cue that the panel was opened
-  flashBadge('↯', '#1a73e8', 1000);
+  if (msg.type === 'SIDEBAR_OPENED') {
+    // Update our state tracking
+    if (sender.tab && sender.tab.id) {
+      sidebarOpenedTabId = sender.tab.id;
+    }
+    return true;
+  }
+
+  if (msg.type === 'SIDEBAR_CLOSED') {
+    // Clear our state tracking
+    sidebarOpenedTabId = null;
+    return true;
+  }
+
+  // Keep listener stub in case other messages are added later; no-op for other types
+  return false;
+});
+
+// When the extension's action button is clicked, toggle the sidebar
+chrome.action.onClicked.addListener(async (tab) => {
+  // Check if sidebar is currently open for this tab
+  //if (sidebarOpenedTabId === tab.id) {
+  if (sidebarOpenedTabId !== null) {
+    // Sidebar is open, try to close it
+
+    // Provide visual feedback that we're closing the sidebar
+    flashBadge('✕', '#FF9800', 500); // Orange X mark
+
+    // Send message directly to the sidebar instead of tab content
+    try {
+      await chrome.runtime.sendMessage({ type: 'CLOSE_SIDEBAR' });      
+    } catch (e) {
+      
+    }    
+    // Update our state tracking
+    sidebarOpenedTabId = null;
+  } else {
+    // Sidebar is not open, try to open it
+    try {
+      await chrome.sidePanel.open({ tabId: tab.id });
+
+      // Also trigger extraction after opening
+      // Wrap in a timeout to give the sidebar time to set up its message listener
+      setTimeout(() => {
+        chrome.runtime.sendMessage({ type: 'TRIGGER_EXTRACTION' })
+          .catch(() => {
+            // This is expected if the sidebar isn't ready yet
+          });
+      }, 500);
+
+      // Provide a subtle badge cue that the panel was opened
+      flashBadge('↯', '#1a73e8', 1000);
+      // Update our state tracking
+      sidebarOpenedTabId = tab.id;
+    } catch (e) {
+      // If we can't open it, show an error
+      flashBadge('?', '#F44336', 1000); // Red question mark
+    }
+  }
 });
 
 const DEFAULT_FILTERS = `# Recommendation sections
@@ -165,18 +214,18 @@ chrome.commands.onCommand.addListener(async (command) => {
       });
       // Small delay to ensure scripts are fully loaded
       await new Promise(resolve => setTimeout(resolve, 100));
-    } catch (_) {}
+    } catch (_) { }
 
     // Get custom filter patterns from storage, falling back to defaults.
     const { filterPatterns } = await chrome.storage.sync.get('filterPatterns');
     const patterns = filterPatterns || DEFAULT_FILTERS;
-    
+
     // First inject the content-extractor.js script
     await chrome.scripting.executeScript({
       target: { tabId: activeTab.id },
       files: ['content-extractor.js']
     });
-    
+
     // Execute the existing content-script extractor in the page context with custom filters
     const results = await chrome.scripting.executeScript({
       target: { tabId: activeTab.id },
@@ -184,13 +233,13 @@ chrome.commands.onCommand.addListener(async (command) => {
       func: (customFilters) => {
         // This function is injected into the page and has no access to the background script's scope.
         // All functions and data it needs must be defined here.
-        
+
         // Set custom filters in window scope for the shared filterMarkdown function
         window.__customFilters = customFilters;
-        
+
         // Use the shared content extraction logic
         const { extractMainContent } = window.ContentExtractor || {};
-        
+
         // Extract content using shared logic
         if (typeof extractMainContent === 'function') {
           return extractMainContent();
@@ -266,18 +315,18 @@ chrome.commands.onCommand.addListener(async (command) => {
       // No content extracted: flash neutral N/A + in-page notification
       flashBadge('N/A', '#5f6368', 1800);
       try {
-          await chrome.tabs.sendMessage(activeTab.id, {
-            type: 'SHOW_INPAGE_NOTIFICATION',
-            data: {
-              notificationType: 'warning',
-              title: 'No Content Extracted',
-              message: 'Could not extract content from this page.',
-              duration: 3500
-            }
-          });
-        } catch (e) {
-          console.warn('Failed to send warning notification:', e);
-        }
+        await chrome.tabs.sendMessage(activeTab.id, {
+          type: 'SHOW_INPAGE_NOTIFICATION',
+          data: {
+            notificationType: 'warning',
+            title: 'No Content Extracted',
+            message: 'Could not extract content from this page.',
+            duration: 3500
+          }
+        });
+      } catch (e) {
+        console.warn('Failed to send warning notification:', e);
+      }
     }
   } catch (err) {
     console.error('Command handling failed:', err);

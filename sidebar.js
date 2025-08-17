@@ -1,5 +1,23 @@
 // Sidebar script for Copilot Sidebar Extension
 
+// Notify the background script that the sidebar is opened
+chrome.runtime.sendMessage({ type: 'SIDEBAR_OPENED' }).catch(() => {});
+
+// Notify the background script when the sidebar is closed
+window.addEventListener('beforeunload', () => {
+  chrome.runtime.sendMessage({ type: 'SIDEBAR_CLOSED' }).catch(() => {});
+});
+
+// Listen for messages from the background script
+chrome.runtime.onMessage.addListener((msg) => {
+  if (msg && msg.type === 'CLOSE_SIDEBAR') {
+    // Close the sidebar by closing the window
+    //alert('Closing sidebar as requested by background script.');
+    window.close();
+    return true;
+  }
+});
+
 // DOM elements
 const currentUrlElement = document.getElementById('current-url');
 const statusElement = document.getElementById('status');
