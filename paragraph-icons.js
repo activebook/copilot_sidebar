@@ -211,10 +211,23 @@
     // Position inside paragraph
     paragraphEl.appendChild(btn);
 
-    // Click handler: copy and flip to green check
+    // Click handler: select, copy, and flip to green check
     btn.addEventListener('click', async (ev) => {
       ev.preventDefault();
       ev.stopPropagation();
+
+      // Select the paragraph text
+      try {
+        const selection = window.getSelection();
+        const range = document.createRange();
+        range.selectNodeContents(paragraphEl);
+        selection.removeAllRanges();
+        selection.addRange(range);
+      } catch (e) {
+        // eslint-disable-next-line no-console
+        console.debug('CSB paragraph selection failed:', e);
+      }
+
       const text = (paragraphEl.innerText || '').trim();
       if (!text) return;
       try {
