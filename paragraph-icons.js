@@ -128,7 +128,7 @@
   function findCandidates() {
     // Only target visible paragraph-like elements with sufficient length
     // Include divs whose class starts with or contains "text-module"
-    const selector = 'p, blockquote, li, div[class^="text-module"], div[class*=" text-module"]';
+    const selector = 'p, blockquote, li, div[class^="text-module"], div[class*=" text-module"], div.article-text';
     const list = Array.from(document.querySelectorAll(selector));
     const filtered = [];
 
