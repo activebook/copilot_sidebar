@@ -8,6 +8,10 @@ window.addEventListener('beforeunload', () => {
   chrome.runtime.sendMessage({ type: 'SIDEBAR_CLOSED' }).catch(() => {});
 });
 
+// sidepanel.js
+const port = chrome.runtime.connect({ name: 'sidepanel-channel' });
+
+
 // Listen for messages from the background script
 chrome.runtime.onMessage.addListener((msg) => {
   if (msg && msg.type === 'CLOSE_SIDEBAR') {

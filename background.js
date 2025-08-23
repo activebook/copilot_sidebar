@@ -99,10 +99,23 @@ chrome.runtime.onMessage.addListener((msg, sender) => {
   return false;
 });
 
+// background.js
+chrome.runtime.onConnect.addListener((port) => {
+  if (port.name === 'sidepanel-channel') {
+    port.onDisconnect.addListener(() => {
+      // The side panel has been closed
+      //console.log('Side panel was closed');
+      // Perform any necessary cleanup here
+      sidebarOpenedTabId = null;
+    });
+  }
+});
+
+
 // When the extension's action button is clicked, toggle the sidebar
 chrome.action.onClicked.addListener(async (tab) => {
-  // Check if sidebar is currently open for this tab
-  //if (sidebarOpenedTabId === tab.id) {
+  // Check if sidebar is currently open by trying to send a message to it
+
   if (sidebarOpenedTabId !== null) {
     // Sidebar is open, try to close it
 
@@ -137,6 +150,7 @@ chrome.action.onClicked.addListener(async (tab) => {
       sidebarOpenedTabId = tab.id;
     } catch (e) {
       // If we can't open it, show an error
+      console.error('Error opening side panel:', e);
       flashBadge('?', '#F44336', 1000); // Red question mark
     }
   }
